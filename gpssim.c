@@ -24,6 +24,91 @@
 #include "gpssim.h"
 #include "bladegps.h"
 
+// for REST Interface
+#include <pthread.h>
+#include <ulfius.h>
+#ifndef _WIN32
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#endif
+#define PORT 8080
+
+void llh2xyz(const double *llh, double *xyz);
+void xyz2llh(const double *xyz, double *llh);
+
+/* REST INTERFACE VARIABLEN UND FUNKTIONEN START */
+
+/**
+ * Callback function that put "Hello World!" and all the data sent by the client in the response as string (http method, url, params, cookies, headers, post, json, and user specific data in the response
+ */
+int callback_post_json(const struct _u_request *request, struct _u_response *response, void *user_data)
+{
+	json_t *json_request_body = ulfius_get_json_body_request(request, NULL);
+	// double latValue = json_real_value(json_object_get(json_request_body, "lat"));
+	// double lonValue = json_real_value(json_object_get(json_request_body, "lon"));
+
+	double latValue = json_number_value(json_object_get(json_request_body, "lat"));
+	double lonValue = json_number_value(json_object_get(json_request_body, "lon"));
+
+	printf("\n###################### lat: %f, lon: %f\n", latValue, lonValue);
+	double **xyz = (double **)user_data;
+	double llh[3];
+	llh[0] = latValue / R2D; // CONVERT TO RAD
+	llh[1] = lonValue / R2D; // CONVERT TO RAD
+	llh[2] = 100.0;
+
+	llh2xyz(llh, xyz[0]); // Convert llh to xyz
+
+	printf("\n### llh: %f\t%f\t%f\t\tcallback_post_json\n", llh[0], llh[1], llh[2]);
+
+	char *response_body = msprintf("Updating location to [lat:%f, lon:%f]", latValue, lonValue);
+
+	ulfius_set_string_body_response(response, 200, response_body);
+	o_free(response_body);
+	return U_CALLBACK_CONTINUE;
+}
+
+void *func(void *xyz)
+{
+	// detach the current thread
+	// from the calling thread
+	pthread_detach(pthread_self());
+
+	struct _u_instance instance;
+
+	// Initialize instance with the port number
+	if (ulfius_init_instance(&instance, PORT, NULL, NULL) != U_OK)
+	{
+		fprintf(stderr, "Error ulfius_init_instance, abort\n");
+		return (1);
+	}
+
+	// Endpoint list declaration
+	ulfius_add_endpoint_by_val(&instance, "POST", "/location", NULL, 0, &callback_post_json, xyz);
+
+	// Start the framework
+	if (ulfius_start_framework(&instance) == U_OK)
+	{
+		printf("Start framework on port %d\n", instance.port);
+
+		// Wait for the user to press <enter> on the console to quit the application
+		getchar();
+	}
+	else
+	{
+		fprintf(stderr, "Error starting framework\n");
+	}
+
+	// exit the current thread
+	pthread_exit(NULL);
+
+	ulfius_stop_framework(&instance);
+	ulfius_clean_instance(&instance);
+}
+
+/* REST INTERFACE VARIABLEN UND FUNKTIONEN ENDE */
+
 int sinTable512[] = {
 	   2,   5,   8,  11,  14,  17,  20,  23,  26,  29,  32,  35,  38,  41,  44,  47,
 	  50,  53,  56,  59,  62,  65,  68,  71,  74,  77,  80,  83,  86,  89,  91,  94,
@@ -2327,6 +2412,21 @@ void *gps_task(void *arg)
 		goto exit;
 	}
 
+	/* FABIAN REST START */
+	////////////////////////////////////////////////////////////
+	// REST Interface
+	////////////////////////////////////////////////////////////
+	// Declare variable for thread's ID:
+	pthread_t id;
+	pthread_create(&id, NULL, func, xyz);
+	printf("# Address Array[0]: %p\n", &xyz[0]);
+	printf("# Address lat: %p\n", &xyz[0][0]);
+	printf("# Address lon: %p\n", &xyz[0][1]);
+	printf("#   Value lat: %f\n", xyz[0][0]);
+	printf("#   Value lon: %f\n", xyz[0][1]);
+
+	/* FABIAN REST ENDE */
+
 	////////////////////////////////////////////////////////////
 	// Initialize channels
 	////////////////////////////////////////////////////////////
@@ -2369,6 +2469,7 @@ void *gps_task(void *arg)
 	// Update receiver time
 	grx = incGpsTime(grx, 0.1);
 
+	// FABIAN GPS SIMULATIONSSCHLEIFE
 	for (iumd=1; iumd<numd; iumd++)
 	{
 		key = 0; // Initialize key input
@@ -2464,7 +2565,9 @@ void *gps_task(void *arg)
 				sv = chan[i].prn-1;
 
 				// Current pseudorange
-				computeRange(&rho, eph[ieph][sv], &ionoutc, grx, xyz[iumd]);
+				// computeRange(&rho, eph[ieph][sv], &ionoutc, grx, xyz[iumd]);
+				// FABIAN Zugriff auf XYZ angepasst
+				computeRange(&rho, eph[ieph][sv], &ionoutc, grx, xyz[0]);
 				chan[i].azel[0] = rho.azel[0];
 				chan[i].azel[1] = rho.azel[1];
 
@@ -2615,7 +2718,9 @@ void *gps_task(void *arg)
 			}
 
 			// Update channel allocation
-			allocateChannel(chan, eph[ieph], ionoutc, alm, grx, xyz[iumd], elvmask);
+			// FABIAN
+			// allocateChannel(chan, eph[ieph], ionoutc, alm, grx, xyz[iumd], elvmask);
+			allocateChannel(chan, eph[ieph], ionoutc, alm, grx, xyz[0], elvmask);
 
 			// Show ditails about simulated channels
 			if (verb)
@@ -2624,8 +2729,13 @@ void *gps_task(void *arg)
 				gps2date(&grx, &t0);
 				printf("%4d/%02d/%02d,%02d:%02d:%02.0f (%d:%.0f)\n", 
 					t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, grx.week, grx.sec);
-				printf("xyz = %11.1f, %11.1f, %11.1f\n", xyz[iumd][0], xyz[iumd][1], xyz[iumd][2]);
-				xyz2llh(xyz[iumd],llh);
+				// FABIAN
+				// printf("xyz = %11.1f, %11.1f, %11.1f\n", xyz[iumd][0], xyz[iumd][1], xyz[iumd][2]);
+				printf("xyz = %11.1f, %11.1f, %11.1f\n", xyz[0][0], xyz[0][1], xyz[0][2]);
+
+				// FABIAN
+				// xyz2llh(xyz[iumd], llh);
+				xyz2llh(xyz[0], llh);
 				printf("llh = %11.6f, %11.6f, %11.1f\n", llh[0]*R2D, llh[1]*R2D, llh[2]);
 				for (i=0; i<MAX_CHAN; i++)
 				{
@@ -2659,6 +2769,14 @@ abort:
 	for (i=0; i<USER_MOTION_SIZE; i++)
 		free(xyz[i]);
 	free(xyz);
+
+	/* FABIAN REST TEARDOWN */
+	int *ptr;
+
+	// Wait for foo() and retrieve value in ptr;
+	pthread_join(id, (void **)&ptr);
+
+	/* FABIAN REST TEARDOWN */
 
 exit:
 	printf("Abort.\n");
