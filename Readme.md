@@ -11,6 +11,7 @@ Options:
   -u <user_motion> User motion file (dynamic mode)
   -g <nmea_gga>    NMEA GGA stream (dynamic mode)
   -l <location>    Lat,Lon,Hgt (static mode) e.g. 35.274,137.014,100
+  -r <location>    Lat,Lon,Hgt (rest interface mode) e.g. 35.274,137.014,100
   -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss
   -T <date,time>   Overwrite TOC and TOE to scenario start time
   -d <duration>    Duration [sec] (max: 86400)

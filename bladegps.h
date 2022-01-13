@@ -51,6 +51,7 @@ typedef struct {
 	char almfile[MAX_CHAR];
 	char umfile[MAX_CHAR];
 	int staticLocationMode;
+	int restInterfaceMode;
 	int nmeaGGA;
 	int iduration;
 	int verb;

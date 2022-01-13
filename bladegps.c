@@ -176,6 +176,7 @@ void usage(void)
 		"  -y <yuma_alm>    YUMA almanac file for GPS almanacs\n"
 		"  -u <user_motion> User motion file (dynamic mode)\n"
 		"  -g <nmea_gga>    NMEA GGA stream (dynamic mode)\n"
+		"  -r <location>    Lat,Lon,Hgt (rest interface mode) e.g. 35.274,137.014,100 ( !! includes static mode !! )\n"
 		"  -l <location>    Lat,Lon,Hgt (static mode) e.g. 35.274,137.014,100\n"
 		"  -t <date,time>   Scenario start time YYYY/MM/DD,hh:mm:ss\n"
 		"  -T <date,time>   Overwrite TOC and TOE to scenario start time\n"
@@ -224,6 +225,7 @@ int main(int argc, char *argv[])
 	s.opt.verb = TRUE;
 	s.opt.nmeaGGA = FALSE;
 	s.opt.staticLocationMode = TRUE; // default user motion
+	s.opt.restInterfaceMode = FALSE; // default user motion
 	s.opt.llh[0] = 40.7850916 / R2D;
 	s.opt.llh[1] = -73.968285 / R2D;
 	s.opt.llh[2] = 100.0;
@@ -232,7 +234,7 @@ int main(int argc, char *argv[])
 	s.opt.iono_enable = TRUE;
 	s.opt.path_loss_enable = TRUE;
 
-	while ((result=getopt(argc,argv,"e:y:u:g:l:T:t:d:x:a:iIp"))!=-1)
+	while ((result=getopt(argc,argv,"e:y:u:g:r:l:T:t:d:x:a:iIp"))!=-1)
 	{
 		switch (result)
 		{
@@ -252,6 +254,10 @@ int main(int argc, char *argv[])
 			s.opt.nmeaGGA = TRUE;
 			s.opt.staticLocationMode = FALSE;
 			break;
+		case 'r':
+			// Added by fabian.kopatschek@cobba.eu
+			s.opt.restInterfaceMode = TRUE;
+			// no break because restInterface is also static mode
 		case 'l':
 			// Static geodetic coordinates input mode
 			// Added by scateu@gmail.com
@@ -436,20 +442,20 @@ int main(int argc, char *argv[])
 		printf("TX bandwidth: %u Hz\n", TX_BANDWIDTH);
 	}
 	
-    	s.status = bladerf_get_gain_range(s.tx.dev, tx_channel, &range);
-    	if (s.status != 0) {
+	s.status = bladerf_get_gain_range(s.tx.dev, tx_channel, &range);
+	if (s.status != 0) {
 		fprintf(stderr, "Failed to check gain range: %s\n", bladerf_strerror(s.status));
 		goto out;
-    	}
-    	else {
-    		min_gain = range->min * range->scale;
-    		max_gain = range->max * range->scale;
-    		printf("TX gain range: [%g dB, %g dB] \n",min_gain, max_gain);
-    		if (tx_gain < min_gain)
-			tx_gain = min_gain;
-		else if (tx_gain > max_gain)
-			tx_gain = max_gain;
-    	}
+	}
+	else {
+		min_gain = range->min * range->scale;
+		max_gain = range->max * range->scale;
+		printf("TX gain range: [%g dB, %g dB] \n",min_gain, max_gain);
+		if (tx_gain < min_gain)
+		tx_gain = min_gain;
+	else if (tx_gain > max_gain)
+		tx_gain = max_gain;
+	}
 
 	s.status = bladerf_set_gain(s.tx.dev, tx_channel, tx_gain);
 	if (s.status != 0) {
@@ -466,9 +472,10 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Failed to start GPS task.\n");
 		goto out;
 	}
-	else
+	else {
 		printf("Creating GPS task...\n");
-
+	}
+	
 	// Wait until GPS task is initialized
 	pthread_mutex_lock(&(s.tx.lock));
 	while (!s.gps.ready)

@@ -2069,6 +2069,7 @@ void *gps_task(void *arg)
 
 	int iumd;
 	int numd;
+	int location_index = 0;
 	char umfile[MAX_CHAR];
 	//double xyz[USER_MOTION_SIZE][3];
 	double **xyz;
@@ -2104,6 +2105,7 @@ void *gps_task(void *arg)
 	int nalm;
 
 	int interactive = FALSE;
+	int restInterface = FALSE;
 	int key;
 	int key_direction;
 	int direction = UNDEF;
@@ -2138,6 +2140,8 @@ void *gps_task(void *arg)
 	delt = 1.0/(double)TX_SAMPLERATE;
 
 	interactive = s->opt.interactive;
+
+	restInterface = s->opt.restInterfaceMode;
 	
 	timeoverwrite = s->opt.timeoverwrite;
 
@@ -2472,6 +2476,10 @@ void *gps_task(void *arg)
 	// FABIAN GPS SIMULATIONSSCHLEIFE
 	for (iumd=1; iumd<numd; iumd++)
 	{
+		if(!restInterface) {
+			location_index = iumd;
+		}
+
 		key = 0; // Initialize key input
 		
 		// Press 'q' to abort
@@ -2565,9 +2573,7 @@ void *gps_task(void *arg)
 				sv = chan[i].prn-1;
 
 				// Current pseudorange
-				// computeRange(&rho, eph[ieph][sv], &ionoutc, grx, xyz[iumd]);
-				// FABIAN Zugriff auf XYZ angepasst
-				computeRange(&rho, eph[ieph][sv], &ionoutc, grx, xyz[0]);
+				computeRange(&rho, eph[ieph][sv], &ionoutc, grx, xyz[location_index]);
 				chan[i].azel[0] = rho.azel[0];
 				chan[i].azel[1] = rho.azel[1];
 
@@ -2718,9 +2724,7 @@ void *gps_task(void *arg)
 			}
 
 			// Update channel allocation
-			// FABIAN
-			// allocateChannel(chan, eph[ieph], ionoutc, alm, grx, xyz[iumd], elvmask);
-			allocateChannel(chan, eph[ieph], ionoutc, alm, grx, xyz[0], elvmask);
+			allocateChannel(chan, eph[ieph], ionoutc, alm, grx, xyz[location_index], elvmask);
 
 			// Show ditails about simulated channels
 			if (verb)
@@ -2729,13 +2733,9 @@ void *gps_task(void *arg)
 				gps2date(&grx, &t0);
 				printf("%4d/%02d/%02d,%02d:%02d:%02.0f (%d:%.0f)\n", 
 					t0.y, t0.m, t0.d, t0.hh, t0.mm, t0.sec, grx.week, grx.sec);
-				// FABIAN
-				// printf("xyz = %11.1f, %11.1f, %11.1f\n", xyz[iumd][0], xyz[iumd][1], xyz[iumd][2]);
-				printf("xyz = %11.1f, %11.1f, %11.1f\n", xyz[0][0], xyz[0][1], xyz[0][2]);
+				printf("xyz = %11.1f, %11.1f, %11.1f\n", xyz[location_index][0], xyz[location_index][1], xyz[location_index][2]);
 
-				// FABIAN
-				// xyz2llh(xyz[iumd], llh);
-				xyz2llh(xyz[0], llh);
+				xyz2llh(xyz[location_index], llh);
 				printf("llh = %11.6f, %11.6f, %11.1f\n", llh[0]*R2D, llh[1]*R2D, llh[2]);
 				for (i=0; i<MAX_CHAN; i++)
 				{
