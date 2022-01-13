@@ -37,21 +37,18 @@
 void llh2xyz(const double *llh, double *xyz);
 void xyz2llh(const double *xyz, double *llh);
 
-/* REST INTERFACE VARIABLEN UND FUNKTIONEN START */
-
 /**
  * Callback function that put "Hello World!" and all the data sent by the client in the response as string (http method, url, params, cookies, headers, post, json, and user specific data in the response
  */
 int callback_post_json(const struct _u_request *request, struct _u_response *response, void *user_data)
 {
 	json_t *json_request_body = ulfius_get_json_body_request(request, NULL);
-	// double latValue = json_real_value(json_object_get(json_request_body, "lat"));
-	// double lonValue = json_real_value(json_object_get(json_request_body, "lon"));
 
+	// alternatively this function could be used: json_real_value()
 	double latValue = json_number_value(json_object_get(json_request_body, "lat"));
 	double lonValue = json_number_value(json_object_get(json_request_body, "lon"));
 
-	printf("\n###################### lat: %f, lon: %f\n", latValue, lonValue);
+	printf("\nlat: %f, lon: %f\t from http request\n", latValue, lonValue);
 	double **xyz = (double **)user_data;
 	double llh[3];
 	llh[0] = latValue / R2D; // CONVERT TO RAD
@@ -59,9 +56,7 @@ int callback_post_json(const struct _u_request *request, struct _u_response *res
 	llh[2] = 100.0;
 
 	llh2xyz(llh, xyz[0]); // Convert llh to xyz
-
-	printf("\n### llh: %f\t%f\t%f\t\tcallback_post_json\n", llh[0], llh[1], llh[2]);
-
+	
 	char *response_body = msprintf("Updating location to [lat:%f, lon:%f]", latValue, lonValue);
 
 	ulfius_set_string_body_response(response, 200, response_body);
@@ -69,42 +64,43 @@ int callback_post_json(const struct _u_request *request, struct _u_response *res
 	return U_CALLBACK_CONTINUE;
 }
 
-void *func(void *xyz)
+void *restserver(void *xyz)
 {
-	// detach the current thread
-	// from the calling thread
+	// detach the current thread from the calling thread
 	pthread_detach(pthread_self());
 
 	struct _u_instance instance;
 
 	// Initialize instance with the port number
-	if (ulfius_init_instance(&instance, PORT, NULL, NULL) != U_OK)
+	if (ulfius_init_instance(&instance, PORT, NULL, NULL) == U_OK)
 	{
-		fprintf(stderr, "Error ulfius_init_instance, abort\n");
-		return (1);
-	}
+		// Endpoint list declaration
+		ulfius_add_endpoint_by_val(&instance, "POST", "/location", NULL, 0, &callback_post_json, xyz);
 
-	// Endpoint list declaration
-	ulfius_add_endpoint_by_val(&instance, "POST", "/location", NULL, 0, &callback_post_json, xyz);
+		// Start the framework
+		if (ulfius_start_framework(&instance) == U_OK)
+		{
+			printf("Start framework on port %d\n", instance.port);
 
-	// Start the framework
-	if (ulfius_start_framework(&instance) == U_OK)
-	{
-		printf("Start framework on port %d\n", instance.port);
+			// Wait for the user to press <enter> on the console to quit the application
+			getchar();
+		}
+		else
+		{
+			fprintf(stderr, "Error starting framework\n");
+		}
 
-		// Wait for the user to press <enter> on the console to quit the application
-		getchar();
+		// exit the current thread
+		pthread_exit(NULL);
+
+		ulfius_stop_framework(&instance);
+		ulfius_clean_instance(&instance);
 	}
 	else
 	{
-		fprintf(stderr, "Error starting framework\n");
+		fprintf(stderr, "Error ulfius_init_instance, abort\n");
 	}
-
-	// exit the current thread
-	pthread_exit(NULL);
-
-	ulfius_stop_framework(&instance);
-	ulfius_clean_instance(&instance);
+	return NULL;
 }
 
 /* REST INTERFACE VARIABLEN UND FUNKTIONEN ENDE */
@@ -2422,7 +2418,7 @@ void *gps_task(void *arg)
 	////////////////////////////////////////////////////////////
 	// Declare variable for thread's ID:
 	pthread_t id;
-	pthread_create(&id, NULL, func, xyz);
+	pthread_create(&id, NULL, restserver, xyz);
 	printf("# Address Array[0]: %p\n", &xyz[0]);
 	printf("# Address lat: %p\n", &xyz[0][0]);
 	printf("# Address lon: %p\n", &xyz[0][1]);
